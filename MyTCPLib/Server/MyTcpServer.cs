@@ -4,50 +4,55 @@ using System.Linq;
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
+using System.Text;
 using System.Threading;
 
-namespace MyTCPLib
+namespace MyTCPLib.Server
 {
+    /// <summary>
+    /// Класс сервера для работы с TCP.
+    /// </summary>
     public class MyTcpServer
     {
+        #region Fields and props
+        /// <summary>
+        /// Список прослушивателей.
+        /// </summary>
+        private List<ServerListener> _listeners = new List<ServerListener>();
+
+        /// <summary>
+        /// Кодировка сообщений.
+        /// </summary>
+        public Encoding StringEncoder { get; set; }
+
+        /// <summary>
+        /// Событие "клиент подключен".
+        /// </summary>
+        public event EventHandler<TcpClient> ClientConnected;
+
+        /// <summary>
+        /// Событие "клиент отключен".
+        /// </summary>
+        public event EventHandler<TcpClient> ClientDisconnected;
+
+        /// <summary>
+        /// Событие "данные отправлены".
+        /// </summary>
+        public event EventHandler<Sender> DataReceived;
+        #endregion
+
+        /// <summary>
+        /// Конструктор.
+        /// </summary>
         public MyTcpServer()
         {
-            Delimiter = 0x13;
-            StringEncoder = System.Text.Encoding.UTF8;
+            StringEncoder = Encoding.UTF8;
         }
 
-        private List<Server.ServerListener> _listeners = new List<Server.ServerListener>();
-        public byte Delimiter { get; set; }
-        public System.Text.Encoding StringEncoder { get; set; }
-        public bool AutoTrimStrings { get; set; }
-
-        public event EventHandler<TcpClient> ClientConnected;
-        public event EventHandler<TcpClient> ClientDisconnected;
-        public event EventHandler<Sender> DelimiterDataReceived;
-        public event EventHandler<Sender> DataReceived;
-
-        public IEnumerable<IPAddress> GetIPAddresses()
-        {
-            List<IPAddress> ipAddresses = new List<IPAddress>();
-
-			IEnumerable<NetworkInterface> enabledNetInterfaces = NetworkInterface.GetAllNetworkInterfaces()
-				.Where(nic => nic.OperationalStatus == OperationalStatus.Up);
-			foreach (NetworkInterface netInterface in enabledNetInterfaces)
-            {
-                IPInterfaceProperties ipProps = netInterface.GetIPProperties();
-                foreach (UnicastIPAddressInformation addr in ipProps.UnicastAddresses)
-                {
-                    if (!ipAddresses.Contains(addr.Address))
-                    {
-                        ipAddresses.Add(addr.Address);
-                    }
-                }
-            }
-
-            var ipSorted = ipAddresses.OrderByDescending(ip => RankIpAddress(ip)).ToList();
-            return ipSorted;
-        }
-
+        /// <summary>
+        /// Получить список прослушиваемых адресов.
+        /// </summary>
+        /// <returns>Список, отсортированный по рангу.</returns>
         public List<IPAddress> GetListeningIPs()
         {
             List<IPAddress> listenIps = new List<IPAddress>();
@@ -62,6 +67,9 @@ namespace MyTCPLib
             return listenIps.OrderByDescending(ip => RankIpAddress(ip)).ToList();
         }
         
+        /// <summary>
+        /// Оповещает все подключенные клиенты сообщением.
+        /// </summary>
         public void Broadcast(byte[] data)
         {
             foreach(var client in _listeners.SelectMany(x => x.ConnectedClients))
@@ -70,60 +78,56 @@ namespace MyTCPLib
             }
         }
 
+        /// <summary>
+        /// Перегрузка для сообщения типа string <see cref="Broadcast(byte[])"/>.
+        /// </summary>
         public void Broadcast(string data)
         {
             if (data == null) { return; }
             Broadcast(StringEncoder.GetBytes(data));
         }
 
-        public void BroadcastLine(string data)
-        {
-            if (string.IsNullOrEmpty(data)) { return; }
-            if (data.LastOrDefault() != Delimiter)
-            {
-                Broadcast(data + StringEncoder.GetString(new byte[] { Delimiter }));
-            }
-            else
-            {
-                Broadcast(data);
-            }
-        }
-
+        /// <summary>
+        /// Ранжирование IP для сортировки.
+        /// </summary>
+        /// <remarks>
         private int RankIpAddress(IPAddress addr)
         {
             int rankScore = 1000;
 
             if (IPAddress.IsLoopback(addr))
             {
-                // rank loopback below others, even though their routing metrics may be better
+                // адрес с "замыканием на себя", например, localhost
                 rankScore = 300;
             }
             else if (addr.AddressFamily == AddressFamily.InterNetwork)
             {
+                //IPv4 адрес
                 rankScore += 100;
-                // except...
+
                 if (addr.GetAddressBytes().Take(2).SequenceEqual(new byte[] { 169, 254 }))
                 {
-                    // APIPA generated address - no router or DHCP server - to the bottom of the pile
+                    // APIPA сгенерированные адреса, DHCP был недоступен
+                    // в диапазоне от 169.254.1.0 до 169.254.254.255
                     rankScore = 0;
                 }
             }
 
-            if (rankScore > 500)
+            if (rankScore > 400)
             {
+                // для активных сетевых интерфейсов
                 foreach (var nic in TryGetCurrentNetworkInterfaces())
                 {
+                    // проверяем наличие адресов сетевых шлюзов
                     var ipProps = nic.GetIPProperties();
                     if (ipProps.GatewayAddresses.Any())
                     {
+                        // и совпадает ли проверяемый адрес с адресом для одноадресной рассылки (unicast)
+                        // или же это конечный (узловой) адрес
                         if (ipProps.UnicastAddresses.Any(u => u.Address.Equals(addr)))
                         {
-                            // if the preferred NIC has multiple addresses, boost all equally
-                            // (justifies not bothering to differentiate... IOW YAGNI)
                             rankScore += 1000;
                         }
-
-                        // only considering the first NIC that is UP and has a gateway defined
                         break;
                     }
                 }
@@ -132,10 +136,14 @@ namespace MyTCPLib
             return rankScore;
         }
 
+        /// <summary>
+        /// Получение конфигураций сетевых интерфейсов.
+        /// </summary>
         private static IEnumerable<NetworkInterface> TryGetCurrentNetworkInterfaces()
         {
             try
             {
+                //возвращаем только работающие интерфейсы, которые могут передавать пакеты
                 return NetworkInterface.GetAllNetworkInterfaces().Where(ni => ni.OperationalStatus == OperationalStatus.Up);
             }
             catch (NetworkInformationException)
@@ -144,86 +152,33 @@ namespace MyTCPLib
             }
         }
 
-        public MyTcpServer Start(int port, bool ignoreNicsWithOccupiedPorts = true)
-        {
-            var ipSorted = GetIPAddresses();
-			bool anyNicFailed = false;
-            foreach (var ipAddr in ipSorted)
-            {
-				try
-				{
-					Start(ipAddr, port);
-				}
-				catch (SocketException ex)
-				{
-					DebugInfo(ex.ToString());
-					anyNicFailed = true;
-				}
-            }
-
-			if (!IsStarted)
-				throw new InvalidOperationException("Port was already occupied for all network interfaces");
-
-			if (anyNicFailed && !ignoreNicsWithOccupiedPorts)
-			{
-				Stop();
-				throw new InvalidOperationException("Port was already occupied for one or more network interfaces.");
-			}
-
-            return this;
-        }
-
-        public MyTcpServer Start(int port, AddressFamily addressFamilyFilter)
-        {
-            var ipSorted = GetIPAddresses().Where(ip => ip.AddressFamily == addressFamilyFilter);
-            foreach (var ipAddr in ipSorted)
-            {
-                try
-                {
-                    Start(ipAddr, port);
-                }
-                catch { }
-            }
-
-            return this;
-        }
-
-		public bool IsStarted { get { return _listeners.Any(l => l.Listener.Active); } }
-
+        /// <summary>
+        /// Запускает сервер.
+        /// </summary>
 		public MyTcpServer Start(IPAddress ipAddress, int port)
         {
-            Server.ServerListener listener = new Server.ServerListener(this, ipAddress, port);
+            ServerListener listener = new ServerListener(this, ipAddress, port);
             _listeners.Add(listener);
 
             return this;
         }
 
+        /// <summary>
+        /// Останавливает сервер.
+        /// </summary>
         public void Stop()
         {
-			_listeners.All(l => l.QueueStop = true);
+			_listeners.All(l => l.Stop = true);
 			while (_listeners.Any(l => l.Listener.Active)){
 				Thread.Sleep(100);
 			};
             _listeners.Clear();
         }
 
-        public int ConnectedClientsCount
-        {
-            get {
-                return _listeners.Sum(l => l.ConnectedClientsCount);
-            }
-        }
-
-        internal void NotifyDelimiterSenderRx(Server.ServerListener listener, TcpClient client, byte[] msg)
-        {
-            if (DelimiterDataReceived != null)
-            {
-                Sender m = new Sender(msg, client, StringEncoder);
-                DelimiterDataReceived(this, m);
-            }
-        }
-
-        internal void NotifyEndTransmissionRx(Server.ServerListener listener, TcpClient client, byte[] msg)
+        /// <summary>
+        /// Сообщает потоку из пула, что сообщения обработаны.
+        /// </summary>
+        internal void NotifyEndTransmissionRx(ServerListener listener, TcpClient client, byte[] msg)
         {
             if (DataReceived != null)
             {
@@ -232,7 +187,10 @@ namespace MyTCPLib
             }
         }
 
-        internal void NotifyClientConnected(Server.ServerListener listener, TcpClient newClient)
+        /// <summary>
+        /// Сообщает о подключении нового клиента.
+        /// </summary>
+        internal void NotifyClientConnected(ServerListener listener, TcpClient newClient)
         {
             if (ClientConnected != null)
             {
@@ -240,28 +198,15 @@ namespace MyTCPLib
             }
         }
 
-        internal void NotifyClientDisconnected(Server.ServerListener listener, TcpClient disconnectedClient)
+        /// <summary>
+        /// Сообщает об отключении клиента.
+        /// </summary>
+        internal void NotifyClientDisconnected(ServerListener listener, TcpClient disconnectedClient)
         {
             if (ClientDisconnected != null)
             {
                 ClientDisconnected(this, disconnectedClient);
             }
         }
-
-		#region Debug logging
-
-		[System.Diagnostics.Conditional("DEBUG")]
-		void DebugInfo(string format, params object[] args)
-		{
-			if (_debugInfoTime == null)
-			{
-				_debugInfoTime = new System.Diagnostics.Stopwatch();
-				_debugInfoTime.Start();
-			}
-			System.Diagnostics.Debug.WriteLine(_debugInfoTime.ElapsedMilliseconds + ": " + format, args);
-		}
-		System.Diagnostics.Stopwatch _debugInfoTime;
-
-		#endregion Debug logging
 	}
 }

@@ -11,11 +11,11 @@ namespace MyTCPLib.Client
         /// <summary>
         /// Адрес сервера.
         /// </summary>
-        public IPAddress ServerIP { get; internal set; }
+        public IPAddress ServerIP { get; private set; }
 
         /// <summary>
         /// Клиент.
         /// </summary>
-        public TcpClient Client { get; internal set; }
+        public TcpClient Client { get; private set; }
     }
 }

@@ -41,14 +41,19 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Common\AddressValidator.cs" />
+    <Compile Include="Common\LogHelpers.cs" />
+    <Compile Include="Common\NetworkConfigsModel.cs" />
+    <Compile Include="Common\NetworkInfoMessages.cs" />
     <Compile Include="Sender.cs" />
     <Compile Include="Client\ConnectedClient.cs" />
     <Compile Include="Server\ServerListener.cs" />
     <Compile Include="Server\CustomTcpListener.cs" />
-    <Compile Include="Client\TcpClient.cs" />
+    <Compile Include="Client\MyTcpClient.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Server\MyTcpServer.cs" />
   </ItemGroup>
+  <ItemGroup />
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
        Other similar extension points exist, see Microsoft.Common.targets.

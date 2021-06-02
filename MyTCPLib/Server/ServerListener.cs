@@ -1,95 +1,145 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Net;
 using System.Net.Sockets;
-using System.Text;
 using System.Threading;
-using System.Threading.Tasks;
 
 namespace MyTCPLib.Server
 {
+    /// <summary>
+    /// Логика прослушивания сервера.
+    /// </summary>
     internal class ServerListener
     {
+        #region Fields
+        /// <summary>
+        /// Экземпляр класса прослушки.
+        /// </summary>
         private CustomTcpListener _listener = null;
+
+        /// <summary>
+        /// Соединенные клиенты.
+        /// </summary>
         private List<TcpClient> _connectedClients = new List<TcpClient>();
+
+        /// <summary>
+        /// Отсоединенные клиенты.
+        /// </summary>
         private List<TcpClient> _disconnectedClients = new List<TcpClient>();
+
+        /// <summary>
+        /// Сервер, который прослушивается.
+        /// </summary>
         private MyTcpServer _parent = null;
-        private List<byte> _queuedMsg = new List<byte>();
-        private byte _delimiter = 0x13;
-        private Thread _rxThread = null;
 
-        public int ConnectedClientsCount
-        {
-            get { return _connectedClients.Count; }
-        }
+        /// <summary>
+        /// Список сообщений.
+        /// </summary>
+        private List<byte> _listMsg = new List<byte>();
+        #endregion
 
+        #region Properties
+        /// <summary>
+        /// Список соединенных клиентов - геттер.
+        /// </summary>
         public IEnumerable<TcpClient> ConnectedClients { get { return _connectedClients; } }
 
+        /// <summary>
+        /// Список исключений, вызванных во время прослушивания.
+        /// </summary>
+        public List<Exception> LoopExceptions { get; private set; }
+
+        /// <summary>
+        /// Флаг остановки прослушивания.
+        /// </summary>
+        internal bool Stop { get; set; }
+
+        /// <summary>
+        /// Прослушиваемый адрес.
+        /// </summary>
+        internal IPAddress IPAddress { get; private set; }
+
+        /// <summary>
+        /// Прослушиваемый порт.
+        /// </summary>
+        internal int Port { get; private set; }
+
+        /// <summary>
+        /// Интервал чтения сообщений.
+        /// </summary>
+        internal int ReadLoopIntervalMs { get; set; }
+
+        /// <summary>
+        /// Экземпляр класса прослушки.
+        /// </summary>
+        internal CustomTcpListener Listener { get { return _listener; } }
+        #endregion
+
+        /// <summary>
+        /// Конструктор.
+        /// </summary>
         internal ServerListener(MyTcpServer parentServer, IPAddress ipAddress, int port)
         {
-            QueueStop = false;
+            Stop = false;
             _parent = parentServer;
             IPAddress = ipAddress;
             Port = port;
             ReadLoopIntervalMs = 10;
+            LoopExceptions = new List<Exception>();
 
             _listener = new CustomTcpListener(ipAddress, port);
             _listener.Start();
 
-            System.Threading.ThreadPool.QueueUserWorkItem(ListenerLoop);
+            // Когда приходит запрос, выделяется новый поток, которому запрос передается на обработку.
+            // Обслуживая эти запросы в нескольких потоках, 
+            // сервер достигает высокой степени параллелизма и оптимальной утилизации.
+            // http://crypto.pp.ua/2011/01/ispolzovanie-threadpool/
+            ThreadPool.QueueUserWorkItem(ListenerLoop);
         }
-
-        private void StartThread()
-        {
-            if (_rxThread != null) { return; }
-            _rxThread = new Thread(ListenerLoop);
-            _rxThread.IsBackground = true;
-            _rxThread.Start();
-        }
-
-        internal bool QueueStop { get; set; }
-        internal IPAddress IPAddress { get; private set; }
-        internal int Port { get; private set; }
-        internal int ReadLoopIntervalMs { get; set; }
-
-        internal CustomTcpListener Listener { get { return _listener; } }
-
-
 		
-	private void ListenerLoop(object state)
+        /// <summary>
+        /// Цикл прослушивания соединений.
+        /// </summary>
+	    private void ListenerLoop(object state)
         {
-            while (!QueueStop)
+            while (!Stop)
             {
                 try
                 {
                     RunLoopStep();
                 }
-                catch 
+                catch (Exception ex)
                 {
-
+                    LoopExceptions.Add(ex);
                 }
 
-                System.Threading.Thread.Sleep(ReadLoopIntervalMs);
+                Thread.Sleep(ReadLoopIntervalMs);
             }
-			_listener.Stop();
+	    	_listener.Stop();
         }
 
-	    
-	bool IsSocketConnected(Socket s)
-	{
-	    // https://stackoverflow.com/questions/2661764/how-to-check-if-a-socket-is-connected-disconnected-in-c
-	    bool part1 = s.Poll(1000, SelectMode.SelectRead);
-	    bool part2 = (s.Available == 0);
-	    if ((part1 && part2) || !s.Connected)
-		return false;
-	    else
-		return true;
-	}
+        /// <summary>
+        /// Проверяет, что сокет все еще подключен.
+        /// </summary>
+        /// <remarks>
+        /// https://stackoverflow.com/questions/2661764/how-to-check-if-a-socket-is-connected-disconnected-in-c
+        /// </remarks>
+        bool IsSocketConnected(Socket s)
+	    {	        
+	        bool part1 = s.Poll(1000, SelectMode.SelectRead);
+	        bool part2 = (s.Available == 0);
+	        if ((part1 && part2) || !s.Connected)
+	    	return false;
+	        else
+	    	return true;
+	    }
 
-	    
+	    /// <summary>
+        /// Итерация для <see cref="ListenerLoop(object)"/>
+        /// </summary>
         private void RunLoopStep()
         {
+            //оповещение отсоединенных клиентов 
             if (_disconnectedClients.Count > 0)
             {
                 var disconnectedClients = _disconnectedClients.ToArray();
@@ -102,27 +152,26 @@ namespace MyTCPLib.Server
                 }
             }
 
+            //принимаем подключение и оповещаем клиент о соединении
             if (_listener.Pending())
             {
 				var newClient = _listener.AcceptTcpClient();
 				_connectedClients.Add(newClient);
                 _parent.NotifyClientConnected(this, newClient);
             }
-            
-            _delimiter = _parent.Delimiter;
 
             foreach (var c in _connectedClients)
             {
-		
-		if ( IsSocketConnected(c.Client) == false)
+		        // находим отсоединенные клиенты, у которых сокет не подключен
+		        if ( IsSocketConnected(c.Client) == false)
                 {
                     _disconnectedClients.Add(c);
                 }
-		    
+		        
+                // получаем сообщения на обработку
                 int bytesAvailable = c.Available;
                 if (bytesAvailable == 0)
                 {
-                    //Thread.Sleep(10);
                     continue;
                 }
 
@@ -133,18 +182,10 @@ namespace MyTCPLib.Server
                     byte[] nextByte = new byte[1];
                     c.Client.Receive(nextByte, 0, 1, SocketFlags.None);
                     bytesReceived.AddRange(nextByte);
-
-                    if (nextByte[0] == _delimiter)
-                    {
-                        byte[] msg = _queuedMsg.ToArray();
-                        _queuedMsg.Clear();
-                        _parent.NotifyDelimiterSenderRx(this, c, msg);
-                    } else
-                    {
-                        _queuedMsg.AddRange(nextByte);
-                    }
+                    _listMsg.AddRange(nextByte);
                 }
 
+                // оповещаем поток из пула, что обработка сообщений закончена
                 if (bytesReceived.Count > 0)
                 {
                     _parent.NotifyEndTransmissionRx(this, c, bytesReceived.ToArray());
