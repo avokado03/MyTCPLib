@@ -49,23 +49,6 @@ namespace MyTCPLib.Server
             StringEncoder = Encoding.UTF8;
         }
 
-        /// <summary>
-        /// Получить список прослушиваемых адресов.
-        /// </summary>
-        /// <returns>Список, отсортированный по рангу.</returns>
-        public List<IPAddress> GetListeningIPs()
-        {
-            List<IPAddress> listenIps = new List<IPAddress>();
-            foreach (var l in _listeners)
-            {
-                if (!listenIps.Contains(l.IPAddress))
-                {
-                    listenIps.Add(l.IPAddress);
-                }
-            }
-
-            return listenIps.OrderByDescending(ip => RankIpAddress(ip)).ToList();
-        }
         
         /// <summary>
         /// Оповещает все подключенные клиенты сообщением.
@@ -85,55 +68,6 @@ namespace MyTCPLib.Server
         {
             if (data == null) { return; }
             Broadcast(StringEncoder.GetBytes(data));
-        }
-
-        /// <summary>
-        /// Ранжирование IP для сортировки.
-        /// </summary>
-        /// <remarks>
-        private int RankIpAddress(IPAddress addr)
-        {
-            int rankScore = 1000;
-
-            if (IPAddress.IsLoopback(addr))
-            {
-                // адрес с "замыканием на себя", например, localhost
-                rankScore = 300;
-            }
-            else if (addr.AddressFamily == AddressFamily.InterNetwork)
-            {
-                //IPv4 адрес
-                rankScore += 100;
-
-                if (addr.GetAddressBytes().Take(2).SequenceEqual(new byte[] { 169, 254 }))
-                {
-                    // APIPA сгенерированные адреса, DHCP был недоступен
-                    // в диапазоне от 169.254.1.0 до 169.254.254.255
-                    rankScore = 0;
-                }
-            }
-
-            if (rankScore > 400)
-            {
-                // для активных сетевых интерфейсов
-                foreach (var nic in TryGetCurrentNetworkInterfaces())
-                {
-                    // проверяем наличие адресов сетевых шлюзов
-                    var ipProps = nic.GetIPProperties();
-                    if (ipProps.GatewayAddresses.Any())
-                    {
-                        // и совпадает ли проверяемый адрес с адресом для одноадресной рассылки (unicast)
-                        // или же это конечный (узловой) адрес
-                        if (ipProps.UnicastAddresses.Any(u => u.Address.Equals(addr)))
-                        {
-                            rankScore += 1000;
-                        }
-                        break;
-                    }
-                }
-            }
-
-            return rankScore;
         }
 
         /// <summary>
