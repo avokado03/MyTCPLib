@@ -16,7 +16,7 @@ namespace MyTCPLib.Client
 		/// <summary>
 		/// Отдельный поток для прослушивания.
 		/// </summary>
-        private Thread _rxThread = null;
+        private Thread _listenThread = null;
 
 		/// <summary>
 		/// Список сообщений.
@@ -38,7 +38,7 @@ namespace MyTCPLib.Client
 		/// <summary>
 		/// Кодировка для сообщений.
 		/// </summary>
-		public Encoding StringEncoder { get; set; }
+		public Encoding StringEncoding { get; set; }
 
 		/// <summary>
 		/// Флаг остановки прослушивания.
@@ -46,9 +46,9 @@ namespace MyTCPLib.Client
 		public bool Stop { get; set; }
 
 		/// <summary>
-		/// Интервал чтения.
+		/// Интервал чтения (ms).
 		/// </summary>
-		public int ReadLoopIntervalMs { get; set; }
+		public int LoopInterval { get; set; }
 
 		/// <summary>
 		/// Геттер для получения экземпляра клиента.
@@ -66,8 +66,8 @@ namespace MyTCPLib.Client
         /// </summary>
         public MyTcpClient()
 		{
-			StringEncoder = Encoding.UTF8;
-			ReadLoopIntervalMs = 10;
+			StringEncoding = Encoding.UTF8;
+			LoopInterval = 10;
 			LoopExceptions = new List<Exception>();
 		}
 
@@ -84,7 +84,7 @@ namespace MyTCPLib.Client
 			_client = new TcpClient();
 			_client.Connect(ipAddress, port);
 
-			StartRxThread();
+			StartListenThread();
 
 			return this;
 		}
@@ -116,10 +116,10 @@ namespace MyTCPLib.Client
 					LoopExceptions.Add(ex);
 				}
 
-                Thread.Sleep(ReadLoopIntervalMs);
+                Thread.Sleep(LoopInterval);
 			}
 
-			_rxThread = null;
+			_listenThread = null;
 		}
 
 		/// <summary>
@@ -151,30 +151,30 @@ namespace MyTCPLib.Client
 
 			if (bytesReceived.Count > 0)
 			{
-				NotifyEndTransmissionRx(c, bytesReceived.ToArray());
+				NotifyWorkingThread(c, bytesReceived.ToArray());
 			}
 		}
 
 		/// <summary>
 		/// Запускает фоновый поток прослушивания.
 		/// </summary>
-		private void StartRxThread()
+		private void StartListenThread()
 		{
-			if (_rxThread != null) { return; }
+			if (_listenThread != null) { return; }
 
-			_rxThread = new Thread(ListenerLoop);
-			_rxThread.IsBackground = true;
-			_rxThread.Start();
+			_listenThread = new Thread(ListenerLoop);
+			_listenThread.IsBackground = true;
+			_listenThread.Start();
 		}
 
 		/// <summary>
 		/// Уведомляет фоновый поток о завершении передачи сообщения.
 		/// </summary>
-		private void NotifyEndTransmissionRx(TcpClient client, byte[] msg)
+		private void NotifyWorkingThread(TcpClient client, byte[] msg)
 		{
 			if (DataReceived != null)
 			{
-				Sender m = new Sender(msg, client, StringEncoder);
+				Sender m = new Sender(msg, client, StringEncoding);
 				DataReceived(this, m);
 			}
 		}
@@ -197,7 +197,7 @@ namespace MyTCPLib.Client
 		public void Write(string data)
 		{
 			if (data == null) { return; }
-			Write(StringEncoder.GetBytes(data));
+			Write(StringEncoding.GetBytes(data));
 		}
 
 		#region IDisposable Support

@@ -47,7 +47,7 @@
     <Compile Include="Common\NetworkInfoMessages.cs" />
     <Compile Include="Sender.cs" />
     <Compile Include="Client\ConnectedClient.cs" />
-    <Compile Include="Server\ServerListener.cs" />
+    <Compile Include="Server\TcpListenerService.cs" />
     <Compile Include="Server\CustomTcpListener.cs" />
     <Compile Include="Client\MyTcpClient.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />

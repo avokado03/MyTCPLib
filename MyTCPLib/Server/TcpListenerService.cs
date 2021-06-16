@@ -9,7 +9,7 @@ namespace MyTCPLib.Server
     /// <summary>
     /// Логика прослушивания сервера.
     /// </summary>
-    internal class ServerListener
+    internal class TcpListenerService
     {
         #region Fields
         /// <summary>
@@ -30,7 +30,7 @@ namespace MyTCPLib.Server
         /// <summary>
         /// Сервер, который прослушивается.
         /// </summary>
-        private MyTcpServer _parent = null;
+        private MyTcpServer _parentServer = null;
 
         /// <summary>
         /// Список сообщений.
@@ -65,9 +65,9 @@ namespace MyTCPLib.Server
         internal int Port { get; private set; }
 
         /// <summary>
-        /// Интервал чтения сообщений.
+        /// Интервал чтения сообщений (ms).
         /// </summary>
-        internal int ReadLoopIntervalMs { get; set; }
+        internal int ReadMessageInterval { get; set; }
 
         /// <summary>
         /// Экземпляр класса прослушки.
@@ -78,13 +78,13 @@ namespace MyTCPLib.Server
         /// <summary>
         /// Конструктор.
         /// </summary>
-        internal ServerListener(MyTcpServer parentServer, IPAddress ipAddress, int port)
+        internal TcpListenerService(MyTcpServer parentServer, IPAddress ipAddress, int port)
         {
             Stop = false;
-            _parent = parentServer;
+            _parentServer = parentServer;
             IPAddress = ipAddress;
             Port = port;
-            ReadLoopIntervalMs = 10;
+            ReadMessageInterval = 10;
             LoopExceptions = new List<Exception>();
 
             _listener = new CustomTcpListener(ipAddress, port);
@@ -113,7 +113,7 @@ namespace MyTCPLib.Server
                     LoopExceptions.Add(ex);
                 }
 
-                Thread.Sleep(ReadLoopIntervalMs);
+                Thread.Sleep(ReadMessageInterval);
             }
 	    	_listener.Stop();
         }
@@ -145,10 +145,10 @@ namespace MyTCPLib.Server
                 var disconnectedClients = _disconnectedClients.ToArray();
                 _disconnectedClients.Clear();
 
-                foreach (var disC in disconnectedClients)
+                foreach (var client in disconnectedClients)
                 {
-                    _connectedClients.Remove(disC);
-                    _parent.NotifyClientDisconnected(this, disC);
+                    _connectedClients.Remove(client);
+                    _parentServer.NotifyClientDisconnected(this, client);
                 }
             }
 
@@ -157,7 +157,7 @@ namespace MyTCPLib.Server
             {
 				var newClient = _listener.AcceptTcpClient();
 				_connectedClients.Add(newClient);
-                _parent.NotifyClientConnected(this, newClient);
+                _parentServer.NotifyClientConnected(this, newClient);
             }
 
             foreach (var c in _connectedClients)
@@ -186,9 +186,10 @@ namespace MyTCPLib.Server
                 }
 
                 // оповещаем поток из пула, что обработка сообщений закончена
+                // и можно отправлять сообщение
                 if (bytesReceived.Count > 0)
                 {
-                    _parent.NotifyEndTransmissionRx(this, c, bytesReceived.ToArray());
+                    _parentServer.NotifyThread(this, c, bytesReceived.ToArray());
                 }  
             }
         }

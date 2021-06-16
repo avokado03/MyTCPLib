@@ -1,7 +1,7 @@
 ﻿namespace MyTCPLib.Common
 {
     /// <summary>
-    /// Сообщения клиента.
+    /// Сообщения клиенту.
     /// </summary>
     public class NetworkInfoMessages
     {

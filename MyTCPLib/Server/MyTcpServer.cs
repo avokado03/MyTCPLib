@@ -2,7 +2,6 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
-using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading;
@@ -18,7 +17,7 @@ namespace MyTCPLib.Server
         /// <summary>
         /// Список прослушивателей.
         /// </summary>
-        private List<ServerListener> _listeners = new List<ServerListener>();
+        private List<TcpListenerService> _listeners = new List<TcpListenerService>();
 
         /// <summary>
         /// Кодировка сообщений.
@@ -53,7 +52,7 @@ namespace MyTCPLib.Server
         /// <summary>
         /// Оповещает все подключенные клиенты сообщением.
         /// </summary>
-        public void Broadcast(byte[] data)
+        public void SendToClients(byte[] data)
         {
             foreach(var client in _listeners.SelectMany(x => x.ConnectedClients))
             {
@@ -62,28 +61,12 @@ namespace MyTCPLib.Server
         }
 
         /// <summary>
-        /// Перегрузка для сообщения типа string <see cref="Broadcast(byte[])"/>.
+        /// Перегрузка для сообщения типа string <see cref="SendToClients(byte[])"/>.
         /// </summary>
-        public void Broadcast(string data)
+        public void SendToClients(string data)
         {
             if (data == null) { return; }
-            Broadcast(StringEncoder.GetBytes(data));
-        }
-
-        /// <summary>
-        /// Получение конфигураций сетевых интерфейсов.
-        /// </summary>
-        private static IEnumerable<NetworkInterface> TryGetCurrentNetworkInterfaces()
-        {
-            try
-            {
-                //возвращаем только работающие интерфейсы, которые могут передавать пакеты
-                return NetworkInterface.GetAllNetworkInterfaces().Where(ni => ni.OperationalStatus == OperationalStatus.Up);
-            }
-            catch (NetworkInformationException)
-            {
-                return Enumerable.Empty<NetworkInterface>();
-            }
+            SendToClients(StringEncoder.GetBytes(data));
         }
 
         /// <summary>
@@ -91,7 +74,7 @@ namespace MyTCPLib.Server
         /// </summary>
 		public MyTcpServer Start(IPAddress ipAddress, int port)
         {
-            ServerListener listener = new ServerListener(this, ipAddress, port);
+            TcpListenerService listener = new TcpListenerService(this, ipAddress, port);
             _listeners.Add(listener);
 
             return this;
@@ -112,7 +95,7 @@ namespace MyTCPLib.Server
         /// <summary>
         /// Сообщает потоку из пула, что сообщения обработаны.
         /// </summary>
-        internal void NotifyEndTransmissionRx(ServerListener listener, TcpClient client, byte[] msg)
+        internal void NotifyThread(TcpListenerService listener, TcpClient client, byte[] msg)
         {
             if (DataReceived != null)
             {
@@ -124,7 +107,7 @@ namespace MyTCPLib.Server
         /// <summary>
         /// Сообщает о подключении нового клиента.
         /// </summary>
-        internal void NotifyClientConnected(ServerListener listener, TcpClient newClient)
+        internal void NotifyClientConnected(TcpListenerService listener, TcpClient newClient)
         {
             if (ClientConnected != null)
             {
@@ -135,7 +118,7 @@ namespace MyTCPLib.Server
         /// <summary>
         /// Сообщает об отключении клиента.
         /// </summary>
-        internal void NotifyClientDisconnected(ServerListener listener, TcpClient disconnectedClient)
+        internal void NotifyClientDisconnected(TcpListenerService listener, TcpClient disconnectedClient)
         {
             if (ClientDisconnected != null)
             {
