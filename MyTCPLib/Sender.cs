@@ -33,11 +33,11 @@ namespace MyTCPLib
         /// <summary>
         /// Конструктор.
         /// </summary>
-        public Sender(byte[] data, TcpClient tcpClient, Encoding stringEncoder)
+        public Sender(byte[] data, TcpClient tcpClient, Encoding stringEncoding)
         {
             Data = data;
             _tcpClient = tcpClient;
-            _encoder = stringEncoder;
+            _encoder = stringEncoding;
         }
 
         /// <summary>

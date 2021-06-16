@@ -22,7 +22,7 @@ namespace MyTCPLib.Server
         /// <summary>
         /// Кодировка сообщений.
         /// </summary>
-        public Encoding StringEncoder { get; set; }
+        public Encoding stringEncoding { get; set; }
 
         /// <summary>
         /// Событие "клиент подключен".
@@ -45,7 +45,7 @@ namespace MyTCPLib.Server
         /// </summary>
         public MyTcpServer()
         {
-            StringEncoder = Encoding.UTF8;
+            stringEncoding = Encoding.UTF8;
         }
 
         
@@ -66,7 +66,7 @@ namespace MyTCPLib.Server
         public void SendToClients(string data)
         {
             if (data == null) { return; }
-            SendToClients(StringEncoder.GetBytes(data));
+            SendToClients(stringEncoding.GetBytes(data));
         }
 
         /// <summary>
@@ -99,7 +99,7 @@ namespace MyTCPLib.Server
         {
             if (DataReceived != null)
             {
-                Sender m = new Sender(msg, client, StringEncoder);
+                Sender m = new Sender(msg, client, stringEncoding);
                 DataReceived(this, m);
             }
         }

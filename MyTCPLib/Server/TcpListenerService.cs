@@ -124,14 +124,14 @@ namespace MyTCPLib.Server
         /// <remarks>
         /// https://stackoverflow.com/questions/2661764/how-to-check-if-a-socket-is-connected-disconnected-in-c
         /// </remarks>
-        bool IsSocketConnected(Socket s)
+        bool IsSocketConnected(Socket socket)
 	    {	        
-	        bool part1 = s.Poll(1000, SelectMode.SelectRead);
-	        bool part2 = (s.Available == 0);
-	        if ((part1 && part2) || !s.Connected)
-	    	return false;
+	        bool wasSuccessful = socket.Poll(1000, SelectMode.SelectRead);
+	        bool isAvailable = (socket.Available == 0);
+	        if ((wasSuccessful && isAvailable) || !socket.Connected)
+	    	    return false;
 	        else
-	    	return true;
+	    	    return true;
 	    }
 
 	    /// <summary>
